@@ -15,31 +15,35 @@ import (
 	"github.com/pivotal-golang/lager"
 )
 
-type (
-	apiClient struct {
-		conf   config.Config
-		logger lager.Logger
-	}
+type apiClient struct {
+	conf   config.Config
+	logger lager.Logger
+}
 
-	errorResponse struct {
-		ErrorMessage string `json:"description"`
-		ErrorCode    string `json:"error_code"`
-	}
+type Client interface {
+	CreateDatabase(map[string]interface{}) (chan cluster.InstanceCredentials, error)
+	UpdateDatabase(int, map[string]interface{}) error
+	DeleteDatabase(int) error
+}
 
-	statusResponse struct {
-		UID        int      `json:"uid"`
-		Password   string   `json:"authentication_redis_pass"`
-		IPList     []string `json:"endpoint_ip"`
-		DNSAddress string   `json:"dns_address_master"`
-		Status     string   `json:"status"`
-	}
-)
+type errorResponse struct {
+	ErrorMessage string `json:"description"`
+	ErrorCode    string `json:"error_code"`
+}
+
+type statusResponse struct {
+	UID        int      `json:"uid"`
+	Password   string   `json:"authentication_redis_pass"`
+	IPList     []string `json:"endpoint_ip"`
+	DNSAddress string   `json:"dns_address_master"`
+	Status     string   `json:"status"`
+}
 
 var (
 	DatabasePollingInterval = 500 // milliseconds
 )
 
-func New(conf config.Config, logger lager.Logger) *apiClient {
+func New(conf config.Config, logger lager.Logger) Client {
 	return &apiClient{
 		conf:   conf,
 		logger: logger,

@@ -5,18 +5,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pivotal-cf/brokerapi"
+	"github.com/pivotal-golang/lager"
+
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/apiclient"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/cluster"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
-	"github.com/pivotal-cf/brokerapi"
-	"github.com/pivotal-golang/lager"
 )
 
 type defaultCreator struct {
-	lock   sync.Mutex
-	logger lager.Logger
-	conf   config.Config
+	lock      sync.Mutex
+	logger    lager.Logger
+	apiClient apiclient.Client
 }
 
 var (
@@ -25,8 +26,8 @@ var (
 
 func NewDefault(conf config.Config, logger lager.Logger) *defaultCreator {
 	return &defaultCreator{
-		conf:   conf,
-		logger: logger,
+		logger:    logger,
+		apiClient: apiclient.New(conf, logger),
 	}
 }
 
@@ -131,8 +132,7 @@ func (d *defaultCreator) InstanceExists(instanceID string, persister persisters.
 }
 
 func (d *defaultCreator) createDatabase(settings map[string]interface{}) (cluster.InstanceCredentials, error) {
-	api := apiclient.New(d.conf, d.logger)
-	ch, err := api.CreateDatabase(settings)
+	ch, err := d.apiClient.CreateDatabase(settings)
 	if err != nil {
 		return cluster.InstanceCredentials{}, err //ErrFailedToCreateDatabase
 	}
@@ -149,11 +149,9 @@ func (d *defaultCreator) createDatabase(settings map[string]interface{}) (cluste
 }
 
 func (d *defaultCreator) updateDatabase(UID int, params map[string]interface{}) error {
-	api := apiclient.New(d.conf, d.logger)
-	return api.UpdateDatabase(UID, params)
+	return d.apiClient.UpdateDatabase(UID, params)
 }
 
 func (d *defaultCreator) deleteDatabase(UID int) error {
-	api := apiclient.New(d.conf, d.logger)
-	return api.DeleteDatabase(UID)
+	return d.apiClient.DeleteDatabase(UID)
 }
