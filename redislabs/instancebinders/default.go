@@ -1,21 +1,23 @@
 package instancebinders
 
 import (
-	"github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
-	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
 	"github.com/pivotal-cf/brokerapi"
 	"github.com/pivotal-golang/lager"
+
+	"github.com/RedisLabs/cf-redislabs-broker/redislabs/apiclient"
+	"github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
+	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
 )
 
 type defaultBinder struct {
-	conf   config.Config
-	logger lager.Logger
+	logger    lager.Logger
+	apiClient apiclient.Client
 }
 
 func NewDefault(conf config.Config, logger lager.Logger) *defaultBinder {
 	return &defaultBinder{
-		conf:   conf,
-		logger: logger,
+		logger:    logger,
+		apiClient: apiclient.New(conf, logger),
 	}
 }
 
@@ -36,10 +38,10 @@ func (d *defaultBinder) Bind(instanceID string, bindingID string, persister pers
 	for _, instance := range state.AvailableInstances {
 		if instance.ID == instanceID {
 			creds := instance.Credentials
-			d.logger.Info("Returning the service credentials", lager.Data{
-				"credentials": creds,
-			})
+			d.logger.Info("Returning the service credentials", lager.Data{"credentials": creds})
+
 			return map[string]interface{}{
+				"host":     d.getHost(creds.UID, creds.Host),
 				"port":     creds.Port,
 				"ip_list":  creds.IPList,
 				"password": creds.Password,
@@ -47,4 +49,21 @@ func (d *defaultBinder) Bind(instanceID string, bindingID string, persister pers
 		}
 	}
 	return nil, brokerapi.ErrInstanceDoesNotExist
+}
+
+func (d *defaultBinder) getHost(UID int, host string) string {
+	// if state file contains host just return it
+	if len(host) != 0 {
+		return host
+	}
+
+	// if service instance was created before this update state file
+	// does not contain host. Fetch it here from RLEC
+	instanceCredentials, err := d.apiClient.GetDatabase(UID)
+	if err != nil {
+		d.logger.Error("Failed to get instance details from API", err)
+		return ""
+	}
+
+	return instanceCredentials.Host
 }

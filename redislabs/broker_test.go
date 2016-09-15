@@ -142,17 +142,24 @@ var _ = Describe("Broker", func() {
 
 					proxy = testing.NewHTTPProxy()
 					proxy.RegisterEndpointHandler("/", func(w http.ResponseWriter, r *http.Request) interface{} {
-						decoder := json.NewDecoder(r.Body)
-						defer r.Body.Close()
-						if err := decoder.Decode(&settings); err != nil {
-							Expect(err).NotTo(HaveOccurred())
-						}
-						return map[string]interface{}{
-							"uid": 1,
-							"authentication_redis_pass": "pass",
-							"endpoint_ip":               []string{"10.0.2.4"},
-							"dns_address_master":        "domain.com:11909",
-							"status":                    "active",
+						if r.Method == "POST" {
+							decoder := json.NewDecoder(r.Body)
+							defer r.Body.Close()
+							if err := decoder.Decode(&settings); err != nil {
+								Expect(err).NotTo(HaveOccurred())
+							}
+							return map[string]interface{}{
+								"uid":    1,
+								"status": "pending",
+							}
+						} else {
+							return map[string]interface{}{
+								"uid": 1,
+								"authentication_redis_pass": "pass",
+								"endpoint_ip":               []string{"10.0.2.4"},
+								"dns_address_master":        "domain.com:11909",
+								"status":                    "active",
+							}
 						}
 					})
 					config.Cluster.Address = proxy.URL()
@@ -201,6 +208,7 @@ var _ = Describe("Broker", func() {
 					Expect(s.ID).To(Equal("some-id"))
 					Expect(s.Credentials).To(Equal(cluster.InstanceCredentials{
 						UID:      1,
+						Host:     "domain.com",
 						Port:     11909,
 						IPList:   []string{"10.0.2.4"},
 						Password: "pass",
@@ -319,6 +327,7 @@ var _ = Describe("Broker", func() {
 							ID: "test-instance",
 							Credentials: cluster.InstanceCredentials{
 								UID:      1,
+								Host:     "example.com",
 								Port:     11909,
 								IPList:   []string{"10.0.2.5"},
 								Password: "pass",
@@ -337,6 +346,7 @@ var _ = Describe("Broker", func() {
 				brokerapiBinding, err := broker.Bind("test-instance", "test-binding", details)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(brokerapiBinding.Credentials).To(Equal(map[string]interface{}{
+					"host":     "example.com",
 					"port":     11909,
 					"ip_list":  []string{"10.0.2.5"},
 					"password": "pass",
@@ -441,19 +451,31 @@ var _ = Describe("Broker", func() {
 						"authentication_redis_pass": "pass",
 						"endpoint_ip":               []string{"10.0.2.4"},
 						"dns_address_master":        "domain.com:11909",
-						"status":                    "active",
-					}}})
+						"status":                    "pending",
+					}},
+				})
 				proxy.RegisterEndpointHandler("/v1/bdbs/1", func(w http.ResponseWriter, r *http.Request) interface{} {
-					bytes, err := ioutil.ReadAll(r.Body)
-					if err != nil {
-						panic(err)
-					}
-					if err = json.Unmarshal(bytes, &updateSettings); err != nil {
-						w.WriteHeader(422)
+					if r.Method == "GET" {
 						return map[string]interface{}{
-							"description": "invalid input data",
+							"uid": 1,
+							"authentication_redis_pass": "pass",
+							"endpoint_ip":               []string{"10.0.2.4"},
+							"dns_address_master":        "domain.com:11909",
+							"status":                    "active",
+						}
+					} else {
+						bytes, err := ioutil.ReadAll(r.Body)
+						if err != nil {
+							panic(err)
+						}
+						if err = json.Unmarshal(bytes, &updateSettings); err != nil {
+							w.WriteHeader(422)
+							return map[string]interface{}{
+								"description": "invalid input data",
+							}
 						}
 					}
+
 					return nil
 				})
 

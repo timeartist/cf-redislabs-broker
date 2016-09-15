@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +25,7 @@ type Client interface {
 	CreateDatabase(map[string]interface{}) (chan cluster.InstanceCredentials, error)
 	UpdateDatabase(int, map[string]interface{}) error
 	DeleteDatabase(int) error
+	GetDatabase(int) (cluster.InstanceCredentials, error)
 }
 
 type errorResponse struct {
@@ -41,6 +43,8 @@ type statusResponse struct {
 
 var (
 	DatabasePollingInterval = 500 // milliseconds
+
+	errDbIsNotActive = errors.New("db is not active")
 )
 
 func New(conf config.Config, logger lager.Logger) Client {
@@ -66,6 +70,8 @@ func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluste
 		return nil, err
 	}
 
+	var dbUid int
+
 	if res.StatusCode != 200 {
 		payload, err := c.parseErrorResponse(res)
 		if err != nil {
@@ -74,36 +80,32 @@ func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluste
 		err = fmt.Errorf(payload.ErrorMessage)
 		c.logger.Error("Failed to create a database", err)
 		return nil, err
+	} else {
+		payload, err := c.parseStatusResponse(res)
+		if err != nil {
+			return nil, err
+		}
+
+		dbUid = payload.UID
 	}
 
 	c.logger.Info("Database creation has been scheduled")
+
 	ch := make(chan cluster.InstanceCredentials)
 	go func() {
-		var payload statusResponse
 		for {
 			time.Sleep(time.Duration(DatabasePollingInterval) * time.Millisecond)
 
-			payload, err = c.parseStatusResponse(res)
+			instanceCredentials, err := c.GetDatabase(dbUid)
 			if err != nil {
-				return
-			}
-			if payload.Status == "active" {
-				port, err := c.parsePortFromDNSAddress(payload.DNSAddress)
-				if err != nil {
-					return
+				if err == errDbIsNotActive {
+					c.logger.Info("Database is not active yet")
+				} else {
+					c.logger.Error("Failed to make a polling request", err)
 				}
-				ch <- cluster.InstanceCredentials{
-					UID:      payload.UID,
-					Port:     port,
-					IPList:   payload.IPList,
-					Password: payload.Password,
-				}
+			} else {
+				ch <- instanceCredentials
 				break
-			}
-
-			res, err = httpClient.Get(fmt.Sprintf("/v1/bdbs/%d", payload.UID), httpclient.HTTPParams{})
-			if err != nil {
-				c.logger.Error("Failed to make a polling request", err)
 			}
 		}
 	}()
@@ -146,6 +148,35 @@ func (c *apiClient) UpdateDatabase(UID int, params map[string]interface{}) error
 		"UID": UID,
 	})
 	return nil
+}
+
+func (c *apiClient) GetDatabase(UID int) (cluster.InstanceCredentials, error) {
+	res, err := c.httpClient().Get(fmt.Sprintf("/v1/bdbs/%d", UID), httpclient.HTTPParams{})
+	if err != nil {
+		return cluster.InstanceCredentials{}, fmt.Errorf("failed to query API for db '%d' details: %s", UID, err)
+	}
+
+	payload, err := c.parseStatusResponse(res)
+	if err != nil {
+		return cluster.InstanceCredentials{}, fmt.Errorf("failed to parse DB '%d' response: %s", UID, err)
+	}
+
+	if payload.Status != "active" {
+		fmt.Println("db statsus=", payload.Status)
+		return cluster.InstanceCredentials{}, errDbIsNotActive
+	}
+
+	host, port, err := c.parseDNSAddress(payload.DNSAddress)
+	if err != nil {
+		return cluster.InstanceCredentials{}, fmt.Errorf("failed to parse DNS: %s", err)
+	}
+	return cluster.InstanceCredentials{
+		UID:      payload.UID,
+		Host:     host,
+		Port:     port,
+		IPList:   payload.IPList,
+		Password: payload.Password,
+	}, nil
 }
 
 func (c *apiClient) DeleteDatabase(UID int) error {
@@ -213,17 +244,18 @@ func (c *apiClient) parseStatusResponse(res *http.Response) (statusResponse, err
 	return payload, err
 }
 
-func (c *apiClient) parsePortFromDNSAddress(address string) (int, error) {
+func (c *apiClient) parseDNSAddress(address string) (string, int, error) {
 	parts := strings.Split(address, ":")
+	host := parts[0]
 	if len(parts) != 2 {
 		err := fmt.Errorf("DNS address does not contain port")
 		c.logger.Error("Failed to parse the port", err)
-		return 0, err
+		return "", 0, err
 	}
 	port, err := strconv.ParseInt(parts[1], 10, 0)
 	if err != nil {
 		c.logger.Error("Failed to parse the port", err)
-		return 0, err
+		return "", 0, err
 	}
-	return int(port), nil
+	return host, int(port), nil
 }
