@@ -17,8 +17,8 @@ import (
 )
 
 type apiClient struct {
-	conf   config.Config
-	logger lager.Logger
+	logger     lager.Logger
+	httpClient httpclient.HTTPClient
 }
 
 type Client interface {
@@ -48,9 +48,16 @@ var (
 )
 
 func New(conf config.Config, logger lager.Logger) Client {
+	httpClient := httpclient.New(
+		conf.Cluster.Auth.Username,
+		conf.Cluster.Auth.Password,
+		conf.Cluster.Address,
+		logger,
+	)
+
 	return &apiClient{
-		conf:   conf,
-		logger: logger,
+		logger:     logger,
+		httpClient: httpClient,
 	}
 }
 
@@ -60,11 +67,10 @@ func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluste
 		return nil, err
 	}
 
-	httpClient := c.httpClient()
 	c.logger.Info("Sending a database creation request", lager.Data{
 		"settings": settings,
 	})
-	res, err := httpClient.Post("/v1/bdbs", httpclient.HTTPPayload(bytes))
+	res, err := c.httpClient.Post("/v1/bdbs", httpclient.HTTPPayload(bytes))
 	if err != nil {
 		c.logger.Error("Failed to perform a database creation request", err)
 		return nil, err
@@ -113,8 +119,6 @@ func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluste
 }
 
 func (c *apiClient) UpdateDatabase(UID int, params map[string]interface{}) error {
-	httpClient := c.httpClient()
-
 	bytes, err := json.Marshal(params)
 	if err != nil {
 		c.logger.Error("Failed to serialize update parameters", err)
@@ -124,7 +128,7 @@ func (c *apiClient) UpdateDatabase(UID int, params map[string]interface{}) error
 		"UID":        UID,
 		"Parameters": params,
 	})
-	res, err := httpClient.Put(fmt.Sprintf("/v1/bdbs/%d", UID), httpclient.HTTPPayload(bytes))
+	res, err := c.httpClient.Put(fmt.Sprintf("/v1/bdbs/%d", UID), httpclient.HTTPPayload(bytes))
 	if err != nil {
 		c.logger.Error("Failed to perform an update request", err, lager.Data{
 			"UID": UID,
@@ -151,7 +155,7 @@ func (c *apiClient) UpdateDatabase(UID int, params map[string]interface{}) error
 }
 
 func (c *apiClient) GetDatabase(UID int) (cluster.InstanceCredentials, error) {
-	res, err := c.httpClient().Get(fmt.Sprintf("/v1/bdbs/%d", UID), httpclient.HTTPParams{})
+	res, err := c.httpClient.Get(fmt.Sprintf("/v1/bdbs/%d", UID), httpclient.HTTPParams{})
 	if err != nil {
 		return cluster.InstanceCredentials{}, fmt.Errorf("failed to query API for db '%d' details: %s", UID, err)
 	}
@@ -180,9 +184,7 @@ func (c *apiClient) GetDatabase(UID int) (cluster.InstanceCredentials, error) {
 }
 
 func (c *apiClient) DeleteDatabase(UID int) error {
-	httpClient := c.httpClient()
-
-	res, err := httpClient.Delete(fmt.Sprintf("/v1/bdbs/%d", UID))
+	res, err := c.httpClient.Delete(fmt.Sprintf("/v1/bdbs/%d", UID))
 	if err != nil {
 		c.logger.Error("Failed to perform the database removal request", err, lager.Data{
 			"UID": UID,
@@ -204,15 +206,6 @@ func (c *apiClient) DeleteDatabase(UID int) error {
 		"UID": UID,
 	})
 	return nil
-}
-
-func (c *apiClient) httpClient() httpclient.HTTPClient {
-	return httpclient.New(
-		c.conf.Cluster.Auth.Username,
-		c.conf.Cluster.Auth.Password,
-		c.conf.Cluster.Address,
-		c.logger,
-	)
 }
 
 func (c *apiClient) parseErrorResponse(res *http.Response) (errorResponse, error) {
