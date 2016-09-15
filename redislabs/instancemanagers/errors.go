@@ -1,4 +1,4 @@
-package instancecreators
+package instancemanagers
 
 import "errors"
 

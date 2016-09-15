@@ -11,7 +11,7 @@ import (
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/cluster"
 	brokerconfig "github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/instancebinders"
-	"github.com/RedisLabs/cf-redislabs-broker/redislabs/instancecreators"
+	"github.com/RedisLabs/cf-redislabs-broker/redislabs/instancemanagers"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/testing"
 	"github.com/pivotal-cf/brokerapi"
@@ -31,7 +31,7 @@ var _ = Describe("Broker", func() {
 
 	JustBeforeEach(func() {
 		broker = redislabs.NewServiceBroker(
-			instancecreators.NewDefault(config, logger),
+			instancemanagers.NewDefault(config, logger),
 			instancebinders.NewDefault(config, logger),
 			persister,
 			config,

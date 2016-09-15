@@ -6,14 +6,15 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/pivotal-cf/brokerapi"
+	"github.com/pivotal-golang/lager"
+
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/passwords"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
-	"github.com/pivotal-cf/brokerapi"
-	"github.com/pivotal-golang/lager"
 )
 
-type ServiceInstanceCreator interface {
+type ServiceInstanceManager interface {
 	Create(instanceID string, settings map[string]interface{}, persister persisters.StatePersister) error
 	Update(instanceID string, params map[string]interface{}, persister persisters.StatePersister) error
 	Destroy(instanceID string, persister persisters.StatePersister) error
@@ -27,7 +28,7 @@ type ServiceInstanceBinder interface {
 }
 
 type serviceBroker struct {
-	InstanceCreator ServiceInstanceCreator
+	InstanceManager ServiceInstanceManager
 	InstanceBinder  ServiceInstanceBinder
 	StatePersister  persisters.StatePersister
 	Config          config.Config
@@ -40,14 +41,14 @@ var (
 )
 
 func NewServiceBroker(
-	instanceCreator ServiceInstanceCreator,
+	instanceManager ServiceInstanceManager,
 	instanceBinder ServiceInstanceBinder,
 	statePersister persisters.StatePersister,
 	conf config.Config,
 	logger lager.Logger) *serviceBroker {
 
 	return &serviceBroker{
-		InstanceCreator: instanceCreator,
+		InstanceManager: instanceManager,
 		InstanceBinder:  instanceBinder,
 		StatePersister:  statePersister,
 		Config:          conf,
@@ -127,7 +128,7 @@ func (b *serviceBroker) Provision(instanceID string, details brokerapi.Provision
 		settings["authentication_redis_pass"] = password
 	}
 
-	return brokerapi.ProvisionedServiceSpec{IsAsync: false}, b.InstanceCreator.Create(instanceID, settings, b.StatePersister)
+	return brokerapi.ProvisionedServiceSpec{IsAsync: false}, b.InstanceManager.Create(instanceID, settings, b.StatePersister)
 }
 
 func (b *serviceBroker) Update(instanceID string, updateDetails brokerapi.UpdateDetails, asyncAllowed bool) (brokerapi.IsAsync, error) {
@@ -155,11 +156,11 @@ func (b *serviceBroker) Update(instanceID string, updateDetails brokerapi.Update
 		params[param] = castValue(value)
 	}
 
-	return brokerapi.IsAsync(false), b.InstanceCreator.Update(instanceID, params, b.StatePersister)
+	return brokerapi.IsAsync(false), b.InstanceManager.Update(instanceID, params, b.StatePersister)
 }
 
 func (b *serviceBroker) Deprovision(instanceID string, details brokerapi.DeprovisionDetails, asyncAllowed bool) (brokerapi.IsAsync, error) {
-	return false, b.InstanceCreator.Destroy(instanceID, b.StatePersister)
+	return false, b.InstanceManager.Destroy(instanceID, b.StatePersister)
 }
 
 func (b *serviceBroker) Bind(instanceID, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, error) {
