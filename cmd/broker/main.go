@@ -10,7 +10,7 @@ import (
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/instancebinders"
-	"github.com/RedisLabs/cf-redislabs-broker/redislabs/instancecreators"
+	"github.com/RedisLabs/cf-redislabs-broker/redislabs/instancemanagers"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
 	"github.com/pivotal-cf/brokerapi"
 	"github.com/pivotal-golang/lager"
@@ -52,7 +52,7 @@ func main() {
 	}
 
 	serviceBroker := redislabs.NewServiceBroker(
-		instancecreators.NewDefault(conf, brokerLogger),
+		instancemanagers.NewDefault(conf, brokerLogger),
 		instancebinders.NewDefault(conf, brokerLogger),
 		persisters.NewLocalPersister(localPersisterPath),
 		conf,
