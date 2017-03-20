@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/cluster"
@@ -33,12 +31,17 @@ type errorResponse struct {
 	ErrorCode    string `json:"error_code"`
 }
 
+type endpointResponse struct {
+        DNSName  string   `json:"dns_name"`
+        Port     int      `json:"port"`
+        AddrList []string `json:"addr"`
+}
+
 type statusResponse struct {
-	UID        int      `json:"uid"`
-	Password   string   `json:"authentication_redis_pass"`
-	IPList     []string `json:"endpoint_ip"`
-	DNSAddress string   `json:"dns_address_master"`
-	Status     string   `json:"status"`
+	UID        int                `json:"uid"`
+	Password   string             `json:"authentication_redis_pass"`
+        Endpoints  []endpointResponse `json:"endpoints"`
+	Status     string             `json:"status"`
 }
 
 var (
@@ -170,15 +173,15 @@ func (c *apiClient) GetDatabase(UID int) (cluster.InstanceCredentials, error) {
 		return cluster.InstanceCredentials{}, errDbIsNotActive
 	}
 
-	host, port, err := c.parseDNSAddress(payload.DNSAddress)
-	if err != nil {
-		return cluster.InstanceCredentials{}, fmt.Errorf("failed to parse DNS: %s", err)
+        if len(payload.Endpoints) < 1 {
+		return cluster.InstanceCredentials{}, fmt.Errorf("No endpoints created")
 	}
+
 	return cluster.InstanceCredentials{
 		UID:      payload.UID,
-		Host:     host,
-		Port:     port,
-		IPList:   payload.IPList,
+		Host:     payload.Endpoints[0].DNSName,
+		Port:     payload.Endpoints[0].Port,
+		IPList:   payload.Endpoints[0].AddrList,
 		Password: payload.Password,
 	}, nil
 }
@@ -225,30 +228,15 @@ func (c *apiClient) parseErrorResponse(res *http.Response) (errorResponse, error
 }
 
 func (c *apiClient) parseStatusResponse(res *http.Response) (statusResponse, error) {
-	payload := statusResponse{}
-	bytes, err := ioutil.ReadAll(res.Body)
-	defer res.Body.Close()
-	if err == nil {
-		err = json.Unmarshal(bytes, &payload)
-	}
-	if err != nil {
-		c.logger.Error("Failed to parse the status response payload", err)
-	}
-	return payload, err
+       payload := statusResponse{}
+       bytes, err := ioutil.ReadAll(res.Body)
+       defer res.Body.Close()
+       if err == nil {
+               err = json.Unmarshal(bytes, &payload)
+       }
+       if err != nil {
+               c.logger.Error("Failed to parse the status response payload", err)
+       }
+       return payload, err
 }
 
-func (c *apiClient) parseDNSAddress(address string) (string, int, error) {
-	parts := strings.Split(address, ":")
-	host := parts[0]
-	if len(parts) != 2 {
-		err := fmt.Errorf("DNS address does not contain port")
-		c.logger.Error("Failed to parse the port", err)
-		return "", 0, err
-	}
-	port, err := strconv.ParseInt(parts[1], 10, 0)
-	if err != nil {
-		c.logger.Error("Failed to parse the port", err)
-		return "", 0, err
-	}
-	return host, int(port), nil
-}
