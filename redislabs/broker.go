@@ -68,7 +68,7 @@ func (b *serviceBroker) Services() []brokerapi.Service {
 			Name:          b.Config.ServiceBroker.Name,
 			Description:   b.Config.ServiceBroker.Description,
 			Bindable:      true,
-			Tags:          []string{"redislabs"},
+			Tags:          []string{"redislabs", "redis"},
 			Plans:         planList,
 			PlanUpdatable: true,
 			Metadata: &brokerapi.ServiceMetadata{
