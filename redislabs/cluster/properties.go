@@ -4,6 +4,7 @@ package cluster
 // cluster instance (database) and connecting to it.
 type InstanceCredentials struct {
 	UID      int
+	Name		 string
 	Host     string
 	Port     int
 	IPList   []string

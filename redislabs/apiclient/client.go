@@ -40,8 +40,9 @@ type endpointResponse struct {
 type statusResponse struct {
 	UID        int                `json:"uid"`
 	Password   string             `json:"authentication_redis_pass"`
-        Endpoints  []endpointResponse `json:"endpoints"`
+  Endpoints  []endpointResponse `json:"endpoints"`
 	Status     string             `json:"status"`
+	Name			 string             `json:"name"`
 }
 
 var (
@@ -164,12 +165,13 @@ func (c *apiClient) GetDatabase(UID int) (cluster.InstanceCredentials, error) {
 	}
 
 	payload, err := c.parseStatusResponse(res)
+
 	if err != nil {
 		return cluster.InstanceCredentials{}, fmt.Errorf("failed to parse DB '%d' response: %s", UID, err)
 	}
 
 	if payload.Status != "active" {
-		fmt.Println("db statsus=", payload.Status)
+		fmt.Println("db status=", payload.Status)
 		return cluster.InstanceCredentials{}, errDbIsNotActive
 	}
 
@@ -178,7 +180,7 @@ func (c *apiClient) GetDatabase(UID int) (cluster.InstanceCredentials, error) {
 	}
 
 	return cluster.InstanceCredentials{
-		UID:      payload.UID,
+		Name:     payload.Name,
 		Host:     payload.Endpoints[0].DNSName,
 		Port:     payload.Endpoints[0].Port,
 		IPList:   payload.Endpoints[0].AddrList,
@@ -239,4 +241,3 @@ func (c *apiClient) parseStatusResponse(res *http.Response) (statusResponse, err
        }
        return payload, err
 }
-

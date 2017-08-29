@@ -7,6 +7,7 @@ import (
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/apiclient"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/config"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/persisters"
+
 )
 
 type defaultBinder struct {
@@ -45,6 +46,7 @@ func (d *defaultBinder) Bind(instanceID string, bindingID string, persister pers
 				"port":     creds.Port,
 				"ip_list":  creds.IPList,
 				"password": creds.Password,
+				"name":			creds.Name
 			}, nil
 		}
 	}
