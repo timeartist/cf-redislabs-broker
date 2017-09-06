@@ -156,9 +156,14 @@ var _ = Describe("Broker", func() {
 							return map[string]interface{}{
 								"uid": 1,
 								"authentication_redis_pass": "pass",
-								"endpoint_ip":               []string{"10.0.2.4"},
-								"dns_address_master":        "domain.com:11909",
-								"status":                    "active",
+								"endpoints": []map[string]interface{}{
+									{
+										"dns_name": "domain.com",
+										"port":     11909,
+										"addr":     []string{"10.0.2.4"},
+									},
+								},
+								"status": "active",
 							}
 						}
 					})
@@ -449,9 +454,14 @@ var _ = Describe("Broker", func() {
 					{"/v1/bdbs", map[string]interface{}{
 						"uid": 1,
 						"authentication_redis_pass": "pass",
-						"endpoint_ip":               []string{"10.0.2.4"},
-						"dns_address_master":        "domain.com:11909",
-						"status":                    "pending",
+						"endpoints": []map[string]interface{}{
+							{
+								"dns_name": "domain.com",
+								"port":     11909,
+								"addr":     []string{"10.0.2.4"},
+							},
+						},
+						"status": "pending",
 					}},
 				})
 				proxy.RegisterEndpointHandler("/v1/bdbs/1", func(w http.ResponseWriter, r *http.Request) interface{} {
@@ -459,9 +469,14 @@ var _ = Describe("Broker", func() {
 						return map[string]interface{}{
 							"uid": 1,
 							"authentication_redis_pass": "pass",
-							"endpoint_ip":               []string{"10.0.2.4"},
-							"dns_address_master":        "domain.com:11909",
-							"status":                    "active",
+							"endpoints": []map[string]interface{}{
+								{
+									"dns_name": "domain.com",
+									"port":     11909,
+									"addr":     []string{"10.0.2.4"},
+								},
+							},
+							"status": "active",
 						}
 					} else {
 						bytes, err := ioutil.ReadAll(r.Body)
@@ -641,8 +656,9 @@ var _ = Describe("Broker", func() {
 				Expect(len(services)).To(Equal(1))
 				service := services[0]
 
-				Expect(len(service.Tags)).To(Equal(1))
+				Expect(len(service.Tags)).To(Equal(2))
 				Expect(service.Tags[0]).To(Equal("redislabs"))
+				Expect(service.Tags[1]).To(Equal("redis"))
 			})
 			It("Says that it is bindable", func() {
 				services := broker.Services()
