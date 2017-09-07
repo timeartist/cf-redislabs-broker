@@ -212,7 +212,7 @@ var _ = Describe("Broker", func() {
 					s := state.AvailableInstances[0]
 					Expect(s.ID).To(Equal("some-id"))
 					Expect(s.Credentials).To(Equal(cluster.InstanceCredentials{
-						UID:      1,
+						UID:      "1",
 						Host:     "domain.com",
 						Port:     11909,
 						IPList:   []string{"10.0.2.4"},
@@ -331,7 +331,7 @@ var _ = Describe("Broker", func() {
 						{
 							ID: "test-instance",
 							Credentials: cluster.InstanceCredentials{
-								UID:      1,
+								UID:      "1",
 								Host:     "example.com",
 								Port:     11909,
 								IPList:   []string{"10.0.2.5"},

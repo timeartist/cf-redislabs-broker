@@ -51,7 +51,7 @@ func (d *defaultBinder) Bind(instanceID string, bindingID string, persister pers
 	return nil, brokerapi.ErrInstanceDoesNotExist
 }
 
-func (d *defaultBinder) getHost(UID int, host string) string {
+func (d *defaultBinder) getHost(UID string, host string) string {
 	// if state file contains host just return it
 	if len(host) != 0 {
 		return host

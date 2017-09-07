@@ -148,10 +148,10 @@ func (d *defaultCreator) createDatabase(settings map[string]interface{}) (cluste
 	}
 }
 
-func (d *defaultCreator) updateDatabase(UID int, params map[string]interface{}) error {
+func (d *defaultCreator) updateDatabase(UID string, params map[string]interface{}) error {
 	return d.apiClient.UpdateDatabase(UID, params)
 }
 
-func (d *defaultCreator) deleteDatabase(UID int) error {
+func (d *defaultCreator) deleteDatabase(UID string) error {
 	return d.apiClient.DeleteDatabase(UID)
 }
