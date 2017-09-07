@@ -1,19 +1,28 @@
 package config
 
 import (
-	"os"
-
+	"errors"
 	"github.com/cloudfoundry-incubator/candiedyaml"
+	"os"
+	"regexp"
+	"strings"
 )
 
 type Config struct {
 	Cluster       ClusterConfig       `yaml:"cluster"`
 	ServiceBroker ServiceBrokerConfig `yaml:"broker"`
+	PeerClusters  PeerClustersConfig  `yaml:"peer_clusters"`
+}
+
+type PeerClustersConfig struct {
+	String   string `yaml:"string"`
+	Clusters []ClusterConfig
 }
 
 type ClusterConfig struct {
 	Auth    AuthConfig `yaml:"auth"`
 	Address string     `yaml:"address"`
+	Name    string     `yaml:"name"`
 }
 
 type ServiceBrokerConfig struct {
@@ -62,6 +71,36 @@ type ServiceMetadata struct {
 	ProviderDisplayName string `yaml:"provider_display_name"`
 }
 
+func parsePeerClustersString(str string) ([]ClusterConfig, error) {
+	str_parts := strings.Split(str, ";")
+	if len(str_parts) == 0 {
+		return []ClusterConfig{}, nil
+	}
+
+	re := regexp.MustCompile("(?P<user>.*?):(?P<pass>.*?)@(?P<fqdn>[^/]*)(?P<addr>/\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})?")
+	clusters := make([]ClusterConfig, len(str_parts))
+	for i, part := range str_parts {
+		m := re.FindStringSubmatch(part)
+		if len(m) == 0 {
+			return []ClusterConfig{}, errors.New("Invalid peer cluster string")
+		}
+
+		addr := m[3]
+		if m[4] != "" {
+			addr = m[4][1:]
+		}
+
+		clusters[i] = ClusterConfig{
+			Auth: AuthConfig{
+				Username: m[1],
+				Password: m[2]},
+			Name:    m[3],
+			Address: addr}
+	}
+
+	return clusters, nil
+}
+
 func LoadFromFile(path string) (Config, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -71,6 +110,13 @@ func LoadFromFile(path string) (Config, error) {
 	var config Config
 	if err := candiedyaml.NewDecoder(file).Decode(&config); err != nil {
 		return Config{}, err
+	}
+	if config.PeerClusters.String != "" {
+		clusters, err := parsePeerClustersString(config.PeerClusters.String)
+		if err != nil {
+			return Config{}, err
+		}
+		config.PeerClusters.Clusters = clusters
 	}
 	// TODO: add validations here
 	return config, nil

@@ -9,7 +9,13 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"testing"
 )
+
+func TestConfig(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Config Suite")
+}
 
 var _ = Describe("Config", func() {
 
@@ -34,7 +40,7 @@ var _ = Describe("Config", func() {
 			Ω(parseConfigErr).NotTo(HaveOccurred())
 		})
 		It("loads service broker name", func() {
-			Ω(config.ServiceBroker.Name).To(Equal("my-redis"))
+			Ω(config.ServiceBroker.Name).To(Equal("redislabs"))
 		})
 		It("loads service id", func() {
 			Ω(config.ServiceBroker.ServiceID).To(Equal("redislabs-service-broker-0b814f"))
@@ -44,9 +50,6 @@ var _ = Describe("Config", func() {
 			Ω(config.ServiceBroker.Metadata.Image).To(Equal("base-64-image"))
 			Ω(config.ServiceBroker.Metadata.ProviderDisplayName).To(Equal("RedisLabs"))
 		})
-		It("loads service broker plans", func() {
-			Ω(config.ServiceBroker.Plans).To(Equal("redislabs-service-broker-0b814f"))
-		})
 	})
 
 	Context("when the configuration file is not found", func() {
@@ -55,7 +58,7 @@ var _ = Describe("Config", func() {
 		})
 
 		It("returns an error", func() {
-			Ω(parseConfigErr).Should(MatchError(ContainSubstring("not found")))
+			Ω(parseConfigErr).Should(MatchError(ContainSubstring("open")))
 		})
 	})
 
@@ -65,6 +68,18 @@ var _ = Describe("Config", func() {
 		})
 		It("fails", func() {
 			Ω(parseConfigErr).To(HaveOccurred())
+		})
+	})
+
+	Context("when peer clusters config is provided", func() {
+		BeforeEach(func() {
+			configPath = "peer_clusters_config.yml"
+		})
+		It("parses properly", func() {
+			Ω(config.PeerClusters.Clusters[0].Name).To(Equal("cluster1"))
+			Ω(config.PeerClusters.Clusters[0].Address).To(Equal("cluster1"))
+			Ω(config.PeerClusters.Clusters[1].Name).To(Equal("cluster2"))
+			Ω(config.PeerClusters.Clusters[1].Address).To(Equal("10.0.0.5"))
 		})
 	})
 

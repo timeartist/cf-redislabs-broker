@@ -1,7 +1,10 @@
-redislabs:
+cluster:
   auth:
     password: redislabs-password
     username: redislabs-username
+
+peer_clusters:
+    string: "admin:pass@cluster1;admin:pass@cluster2/10.0.0.5"
 
 broker:
   port: 8080
@@ -38,3 +41,4 @@ broker:
       memory: 20480
       replication: true
       shard_count: 3
+
