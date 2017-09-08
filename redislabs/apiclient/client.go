@@ -16,8 +16,9 @@ import (
 )
 
 type apiClient struct {
-	logger     lager.Logger
-	httpClient httpclient.HTTPClient
+	logger       lager.Logger
+	httpClient   httpclient.HTTPClient
+	crdbClusters []crdbClusterInfo
 }
 
 type Client interface {
@@ -40,6 +41,7 @@ type endpointResponse struct {
 
 type statusResponse struct {
 	UID       int                `json:"uid"`
+	CRDBGUID  string             `json:"crdt_guid"` // Note: crdt_guid is not a typo
 	Password  string             `json:"authentication_redis_pass"`
 	Endpoints []endpointResponse `json:"endpoints"`
 	Status    string             `json:"status"`
@@ -60,12 +62,17 @@ func New(conf config.Config, logger lager.Logger) Client {
 	)
 
 	return &apiClient{
-		logger:     logger,
-		httpClient: httpClient,
+		logger:       logger,
+		httpClient:   httpClient,
+		crdbClusters: makeCRDBClusters(conf),
 	}
 }
 
 func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluster.InstanceCredentials, error) {
+	if settings["type"] == "crdb" {
+		delete(settings, "type")
+		return c.CreateCRDB(settings)
+	}
 	bytes, err := json.Marshal(settings)
 	if err != nil {
 		return nil, err
@@ -188,6 +195,10 @@ func (c *apiClient) GetDatabase(UID string) (cluster.InstanceCredentials, error)
 }
 
 func (c *apiClient) DeleteDatabase(UID string) error {
+	if isCRDBUID(UID) {
+		return c.DeleteCRDB(UID)
+	}
+
 	res, err := c.httpClient.Delete(fmt.Sprintf("/v1/bdbs/%s", UID))
 	if err != nil {
 		c.logger.Error("Failed to perform the database removal request", err, lager.Data{

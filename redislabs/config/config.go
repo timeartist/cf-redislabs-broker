@@ -44,6 +44,7 @@ type ServicePlanConfig struct {
 	ID                    string                `yaml:"id"`
 	Name                  string                `yaml:"name"`
 	Description           string                `yaml:"description"`
+	Type                  string                `yaml:"type"`
 	Metadata              ServicePlanMetadata   `yaml:"metadata"`
 	ServiceInstanceConfig ServiceInstanceConfig `yaml:"settings"`
 }
@@ -71,7 +72,7 @@ type ServiceMetadata struct {
 	ProviderDisplayName string `yaml:"provider_display_name"`
 }
 
-func parsePeerClustersString(str string) ([]ClusterConfig, error) {
+func ParsePeerClustersString(str string) ([]ClusterConfig, error) {
 	str_parts := strings.Split(str, ";")
 	if len(str_parts) == 0 {
 		return []ClusterConfig{}, nil
@@ -112,7 +113,7 @@ func LoadFromFile(path string) (Config, error) {
 		return Config{}, err
 	}
 	if config.PeerClusters.String != "" {
-		clusters, err := parsePeerClustersString(config.PeerClusters.String)
+		clusters, err := ParsePeerClustersString(config.PeerClusters.String)
 		if err != nil {
 			return Config{}, err
 		}

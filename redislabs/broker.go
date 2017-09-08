@@ -108,6 +108,13 @@ func (b *serviceBroker) Provision(instanceID string, details brokerapi.Provision
 	settings := map[string]interface{}{
 		"name": name,
 	}
+
+	// A quick hack to pass the info that this is a crdb and not a bdb into the API.
+	// This should really be refactored properly in time.
+	if ptype, _ := b.planType(details.PlanID); ptype == "crdb" {
+		settings["type"] = "crdb"
+	}
+
 	// Record values coming from the plan.
 	for param, value := range planSettings {
 		settings[param] = value
@@ -189,6 +196,10 @@ func (b *serviceBroker) LastOperation(instanceID string) (brokerapi.LastOperatio
 func (b *serviceBroker) planDescriptions() map[string]*brokerapi.ServicePlan {
 	plansByID := map[string]*brokerapi.ServicePlan{}
 	for _, plan := range b.Config.ServiceBroker.Plans {
+		// Skip crdb plans if we have no peer clusters
+		if plan.Type == "crdb" && len(b.Config.PeerClusters.Clusters) == 0 {
+			continue
+		}
 		plansByID[plan.ID] = &brokerapi.ServicePlan{
 			ID:          plan.ID,
 			Name:        plan.Name,
@@ -199,6 +210,15 @@ func (b *serviceBroker) planDescriptions() map[string]*brokerapi.ServicePlan {
 		}
 	}
 	return plansByID
+}
+
+func (b *serviceBroker) planType(PlanID string) (string, bool) {
+	for _, plan := range b.Config.ServiceBroker.Plans {
+		if plan.ID == PlanID {
+			return plan.Type, true
+		}
+	}
+	return "", false
 }
 
 func (b *serviceBroker) planSettings() map[string]map[string]interface{} {

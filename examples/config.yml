@@ -45,3 +45,19 @@ broker:
       replication: true
       shard_count: 2
       persistence: aof
+  - name: geo-replicated-small
+    id: redislabs-geo-small
+    description: "Geo-Replicated Redis CRDB, 2GB memory limit, local HA, persistence"
+    settings:
+        memory: 2147483648
+        replication: true
+        shards_count: 1
+        persistence: aof
+  - name: geo-replicated-large
+    id: redislabs-geo-small
+    description: "Geo-Replicated Redis CRDB, 2GB memory limit, cluster with 2 shards, local HA, persistence"
+    settings:
+        memory: 10737418240
+        replication: true
+        shards_count: 2
+        persistence: aof

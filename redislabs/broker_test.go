@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs"
 	"github.com/RedisLabs/cf-redislabs-broker/redislabs/cluster"
@@ -28,6 +29,10 @@ var _ = Describe("Broker", func() {
 		persister persisters.StatePersister
 		logger    = lager.NewLogger("test") // does not actually log anything
 	)
+
+	// Uncomment for test troubleshooting
+	//logger.RegisterSink(lager.NewWriterSink(os.Stdout, lager.DEBUG))
+	//logger.RegisterSink(lager.NewWriterSink(os.Stderr, lager.ERROR))
 
 	JustBeforeEach(func() {
 		broker = redislabs.NewServiceBroker(
@@ -674,6 +679,188 @@ var _ = Describe("Broker", func() {
 
 				Expect(service.PlanUpdatable).To(Equal(true))
 			})
+		})
+		Context("Given a config with mixed CRDB and regular plans", func() {
+			BeforeEach(func() {
+				config = brokerconfig.Config{
+					ServiceBroker: brokerconfig.ServiceBrokerConfig{
+						ServiceID:   "redislabs-test",
+						Name:        "redislabs test",
+						Description: "redislabs description",
+						Plans: []brokerconfig.ServicePlanConfig{
+							{
+								ID:          "plan-1",
+								Name:        "plan",
+								Description: "plan description",
+							},
+							{
+								ID:          "plan-2",
+								Name:        "crdb plan",
+								Type:        "crdb",
+								Description: "crdb plan description",
+							},
+						},
+					},
+				}
+			})
+
+			It("Provides only standard plans by default", func() {
+				services := broker.Services()
+				Expect(len(services)).To(Equal(1))
+
+				service := services[0]
+				Expect(len(service.Plans)).To(Equal(1))
+
+				plan := service.Plans[0]
+				Expect(plan).To(Equal(brokerapi.ServicePlan{
+					ID:          "plan-1",
+					Name:        "plan",
+					Description: "plan description",
+					Metadata:    &brokerapi.ServicePlanMetadata{},
+				}))
+			})
+
+			Context("Given peer clusters are configured", func() {
+				BeforeEach(func() {
+					clusters, _ := brokerconfig.ParsePeerClustersString(
+						"user:pass@cluster1;user:pass@cluster2")
+					config.PeerClusters.Clusters = clusters
+				})
+
+				It("Provides standard and crdb plans", func() {
+					services := broker.Services()
+					Expect(len(services)).To(Equal(1))
+
+					service := services[0]
+					Expect(len(service.Plans)).To(Equal(2))
+				})
+			})
+		})
+	})
+
+	Describe("Provisioning a CRDB", func() {
+		var (
+			serviceID = "test-service-id"
+			planID    = "test-plan-id"
+			details   brokerapi.ProvisionDetails
+		)
+		Context("Given a config with peer clusters and a crdb plan", func() {
+			BeforeEach(func() {
+				config = brokerconfig.Config{
+					ServiceBroker: brokerconfig.ServiceBrokerConfig{
+						ServiceID: serviceID,
+						Plans: []brokerconfig.ServicePlanConfig{
+							{
+								ID:          planID,
+								Type:        "crdb",
+								Name:        "test",
+								Description: "Test CRDB Plan",
+							},
+						},
+					},
+					Cluster: brokerconfig.ClusterConfig{
+						Address: "",
+					},
+				}
+				config.PeerClusters.Clusters, _ = brokerconfig.ParsePeerClustersString(
+					"user:pass@cluster1;user:pass@cluster2/1.1.1.1")
+			})
+
+			Context("With valid request settings", func() {
+				var (
+					tmpStateDir string
+					proxy       testing.HTTPProxy
+					err         error
+					settings    map[string]interface{}
+				)
+
+				taskUID := "3a6a9c64-9473-11e7-9885-232341394896"
+				crdbGUID := "53ba2cca-9473-11e7-9c30-bf3f704d6630"
+
+				BeforeEach(func() {
+					details = brokerapi.ProvisionDetails{
+						ServiceID:        serviceID,
+						PlanID:           planID,
+						OrganizationGUID: "",
+						SpaceGUID:        "",
+					}
+					tmpStateDir, err = ioutil.TempDir("", "redislabs-state-test")
+					Expect(err).NotTo(HaveOccurred())
+					persister = persisters.NewLocalPersister(path.Join(tmpStateDir, "state.json"))
+
+					proxy = testing.NewHTTPProxy()
+					proxy.RegisterEndpointHandler("/", func(w http.ResponseWriter, r *http.Request) interface{} {
+						if r.Method == "POST" && strings.HasPrefix(r.URL.RequestURI(), "/v1/crdbs") {
+							decoder := json.NewDecoder(r.Body)
+							defer r.Body.Close()
+							if err := decoder.Decode(&settings); err != nil {
+								Expect(err).NotTo(HaveOccurred())
+							}
+							return map[string]interface{}{
+								"id":        taskUID,
+								"crdb_guid": crdbGUID,
+								"status":    "pending",
+							}
+						} else if r.Method == "GET" && strings.HasPrefix(r.URL.RequestURI(), "/v1/crdb_tasks/") {
+							return map[string]interface{}{
+								"id":        taskUID,
+								"crdb_guid": crdbGUID,
+								"status":    "finished",
+							}
+						} else {
+							return []map[string]interface{}{
+								{"uid": 1},
+								{"uid": 2, "crdt_guid": crdbGUID,
+									"status": "active",
+									"endpoints": []map[string]interface{}{
+										{"dns_name": "redis-1000.domain.com",
+											"port": 1000,
+											"addr": []string{"10.0.2.4"},
+										},
+									},
+									"authentication_redis_pass": "pass",
+								},
+							}
+						}
+					})
+					config.Cluster.Address = proxy.URL()
+
+					config.ServiceBroker.Plans[0].ServiceInstanceConfig = brokerconfig.ServiceInstanceConfig{
+						MemoryLimit: 1024,
+						Replication: true,
+						Persistence: "enabled",
+					}
+				})
+
+				AfterEach(func() {
+					proxy.Close()
+					os.RemoveAll(tmpStateDir)
+				})
+
+				It("Creates a CRDB instance of the configured plan", func() {
+					_, err := broker.Provision("some-id", details, false)
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("Saves the credentials properly", func() {
+					_, err := broker.Provision("some-id", details, false)
+					Expect(err).ToNot(HaveOccurred())
+
+					state, err := persister.Load()
+					Expect(err).ToNot(HaveOccurred())
+					Expect(len(state.AvailableInstances)).To(Equal(1))
+					s := state.AvailableInstances[0]
+					Expect(s.ID).To(Equal("some-id"))
+					Expect(s.Credentials).To(Equal(cluster.InstanceCredentials{
+						UID:      crdbGUID,
+						Host:     "redis-1000.domain.com",
+						Port:     1000,
+						IPList:   []string{"10.0.2.4"},
+						Password: "pass",
+					}))
+				})
+			})
+
 		})
 	})
 })
