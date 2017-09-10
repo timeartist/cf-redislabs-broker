@@ -30,15 +30,15 @@ type crdbTaskStatus struct {
 type crdbSettings struct {
 	GUID            string                 `json:"guid,omitempty"`
 	Name            string                 `json:"name"`
-	DefaultDBConfig map[string]interface{} `json:"default_db_config,omitifempty"`
+	DefaultDBConfig map[string]interface{} `json:"default_db_config,omitempty"`
 	Instances       []crdbInstance         `json:"instances"`
 }
 
 type crdbInstance struct {
-	ID          int                    `json:"id,omitifempty"`
-	Compression int                    `json:"compression,omitifempty"`
+	ID          int                    `json:"id,omitempty"`
+	Compression int                    `json:"compression,omitempty"`
 	Cluster     crdbClusterInfo        `json:"cluster"`
-	DBConfig    map[string]interface{} `json:"db_config,omitifempty"`
+	DBConfig    map[string]interface{} `json:"db_config,omitempty"`
 }
 
 type crdbClusterInfo struct {
@@ -105,7 +105,6 @@ func (c *apiClient) CreateCRDB(settings map[string]interface{}) (chan cluster.In
 		return nil, err
 	}
 
-	var crdbGUID string
 	var taskID string
 
 	if res.StatusCode != 200 {
@@ -122,13 +121,13 @@ func (c *apiClient) CreateCRDB(settings map[string]interface{}) (chan cluster.In
 			return nil, err
 		}
 
-		crdbGUID = payload.CRDBGUID
+		// At this time we may or may not have a CRDB GUID, but having a
+		// TaskID is enough.
 		taskID = payload.ID
 	}
 
 	c.logger.Info("CRDB creation has been scheduled, ", lager.Data{
-		"task_id":   taskID,
-		"crdb_guid": crdbGUID})
+		"task_id": taskID})
 
 	ch := make(chan cluster.InstanceCredentials)
 	go func() {
@@ -139,10 +138,21 @@ func (c *apiClient) CreateCRDB(settings map[string]interface{}) (chan cluster.In
 			if err != nil {
 				c.logger.Error("Failed to make a polling request", err)
 			} else if status.Status == "finished" {
-				instanceCredentials, _ := c.GetCRDBSettings(crdbGUID)
+				instanceCredentials, _ := c.GetCRDBSettings(status.CRDBGUID)
 				ch <- instanceCredentials
 				break
+			} else if status.Status == "failed" {
+				if len(status.Errors) > 0 {
+					c.logger.Debug("CRDB create failed with no errors")
+				} else {
+					c.logger.Debug("CRDB create failed", lager.Data{
+						"Errors": status.Errors})
+					// TODO: This should probably be refactored so we can pass these errors
+					// back to the user!
+				}
+				break
 			}
+
 		}
 	}()
 	return ch, nil
