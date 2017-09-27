@@ -73,6 +73,11 @@ func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluste
 		delete(settings, "type")
 		return c.CreateCRDB(settings)
 	}
+
+	if settings["type"] == "existing" {
+		delete(settings, "type")
+		return c.CreateFromExisting(settings)
+	}
 	bytes, err := json.Marshal(settings)
 	if err != nil {
 		return nil, err
@@ -129,6 +134,31 @@ func (c *apiClient) CreateDatabase(settings map[string]interface{}) (chan cluste
 	return ch, nil
 }
 
+func (c *apiClient) CreateFromExisting(name string) (cluster.InstanceCredentials, error) {
+	res, err := c.httpClient.Get("/v1/bdbs", httpclient.HTTPParams{})
+	if err != nil {
+		return cluster.InstanceCredentials{}, fmt.Errorf("failed to query API for bdbs, details: %s", err)
+	}
+
+	payload := []statusResponse{}
+	bytes, err := ioutil.ReadAll(res.Body)
+	defer res.Body.Close()
+	if err == nil {
+		err = json.Unmarshal(bytes, &payload)
+	}
+	if err != nil {
+		c.logger.Error("Failed to parse bdbs response", err)
+		return cluster.InstanceCredentials{}, err
+	}
+
+	// Find database
+	for _, db := range payload {
+		c.logger.Debug("Received local DB instance", lager.Data{"db": db})
+	}
+
+	return cluster.InstanceCredentials{}, fmt.Errorf("not yet implemented")
+}
+
 func (c *apiClient) UpdateDatabase(UID string, params map[string]interface{}) error {
 	bytes, err := json.Marshal(params)
 	if err != nil {
@@ -177,7 +207,7 @@ func (c *apiClient) GetDatabase(UID string) (cluster.InstanceCredentials, error)
 	}
 
 	if payload.Status != "active" {
-		fmt.Println("db statsus=", payload.Status)
+		fmt.Println("db status=", payload.Status)
 		return cluster.InstanceCredentials{}, errDbIsNotActive
 	}
 
